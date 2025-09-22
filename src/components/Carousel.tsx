@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "./ui/button";
 import { ChevronLeftIcon, ChevronRightIcon } from "@radix-ui/react-icons";
 import MediPointImg from "../assets/carousel_images/MediPointImg.jpg";
@@ -51,6 +51,9 @@ const medicalSoftwareData = [
 export const Carousel = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
+  const autoPlayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-play functionality
   useEffect(() => {
@@ -65,19 +68,96 @@ export const Carousel = () => {
     return () => clearInterval(interval);
   }, [isAutoPlaying]);
 
+  // Cleanup timeout on component unmount
+  useEffect(() => {
+    return () => {
+      if (autoPlayTimeoutRef.current) {
+        clearTimeout(autoPlayTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const goToPrevious = () => {
     setCurrentIndex(currentIndex === 0 ? medicalSoftwareData.length - 1 : currentIndex - 1);
-    setIsAutoPlaying(false);
+    pauseAndResumeAutoPlay();
   };
 
   const goToNext = () => {
     setCurrentIndex(currentIndex === medicalSoftwareData.length - 1 ? 0 : currentIndex + 1);
-    setIsAutoPlaying(false);
+    pauseAndResumeAutoPlay();
   };
 
   const goToSlide = (index: number) => {
     setCurrentIndex(index);
+    pauseAndResumeAutoPlay();
+  };
+
+  // Function to pause auto-play and resume it after a delay
+  const pauseAndResumeAutoPlay = () => {
     setIsAutoPlaying(false);
+    
+    // Clear any existing timeout
+    if (autoPlayTimeoutRef.current) {
+      clearTimeout(autoPlayTimeoutRef.current);
+    }
+
+    // Resume auto-play after 3 seconds of inactivity
+    autoPlayTimeoutRef.current = setTimeout(() => {
+      setIsAutoPlaying(true);
+    }, 3000);
+  };
+
+  // Touch/Swipe handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+    setIsAutoPlaying(false); // Pause auto-play when user starts swiping
+    
+    // Clear any existing resume timeout
+    if (autoPlayTimeoutRef.current) {
+      clearTimeout(autoPlayTimeoutRef.current);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartX.current || !touchEndX.current) {
+      // If no swipe detected, still resume auto-play after delay
+      resumeAutoPlayAfterDelay();
+      return;
+    }
+    
+    const distance = touchStartX.current - touchEndX.current;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+
+    if (isLeftSwipe) {
+      setCurrentIndex(currentIndex === medicalSoftwareData.length - 1 ? 0 : currentIndex + 1);
+    } else if (isRightSwipe) {
+      setCurrentIndex(currentIndex === 0 ? medicalSoftwareData.length - 1 : currentIndex - 1);
+    }
+
+    // Reset touch positions
+    touchStartX.current = null;
+    touchEndX.current = null;
+
+    // Resume auto-play after delay
+    resumeAutoPlayAfterDelay();
+  };
+
+  // Function to resume auto-play after a delay
+  const resumeAutoPlayAfterDelay = () => {
+    // Clear any existing timeout
+    if (autoPlayTimeoutRef.current) {
+      clearTimeout(autoPlayTimeoutRef.current);
+    }
+
+    // Resume auto-play after 2 seconds of inactivity
+    autoPlayTimeoutRef.current = setTimeout(() => {
+      setIsAutoPlaying(true);
+    }, 2000);
   };
 
   // Get visible slides for different screen sizes
@@ -106,11 +186,11 @@ export const Carousel = () => {
 
       {/* Carousel Container */}
       <div className="relative max-w-7xl mx-auto">
-        {/* Navigation Buttons */}
+        {/* Navigation Buttons - Hidden on mobile/tablet, visible on desktop only */}
         <Button
           variant="outline"
           size="icon"
-          className="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm hover:bg-background"
+          className="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm hover:bg-background hidden lg:flex"
           onClick={goToPrevious}
         >
           <ChevronLeftIcon className="h-4 w-4" />
@@ -119,14 +199,19 @@ export const Carousel = () => {
         <Button
           variant="outline"
           size="icon"
-          className="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm hover:bg-background"
+          className="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm hover:bg-background hidden lg:flex"
           onClick={goToNext}
         >
           <ChevronRightIcon className="h-4 w-4" />
         </Button>
 
         {/* Carousel Content */}
-        <div className="overflow-hidden rounded-xl" id="software">
+        <div 
+          className="overflow-hidden rounded-xl"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
           {/* Desktop View - 3 slides */}
           <div className="hidden md:grid md:grid-cols-3 gap-6 px-12">
             {getVisibleSlides().map((software, index) => (
@@ -151,14 +236,15 @@ export const Carousel = () => {
             ))}
           </div>
 
-          {/* Mobile View - 1 slide */}
+          {/* Mobile/Tablet View - 1 slide with swipe support */}
           <div className="md:hidden px-6">
-            <div className="bg-card rounded-lg border shadow-sm">
+            <div className="bg-card rounded-lg border shadow-sm select-none">
               <div className="aspect-video bg-muted rounded-t-lg overflow-hidden">
                 <img
                   src={medicalSoftwareData[currentIndex].image}
                   alt={medicalSoftwareData[currentIndex].name}
                   className="w-full h-full object-cover"
+                  draggable={false}
                 />
               </div>
               <div className="p-6">
@@ -170,6 +256,10 @@ export const Carousel = () => {
                 </p>
               </div>
             </div>
+            {/* Swipe instruction for mobile users */}
+            <p className="text-center text-xs text-muted-foreground mt-2 opacity-60">
+              Swipe left or right to browse
+            </p>
           </div>
         </div>
 
@@ -187,8 +277,6 @@ export const Carousel = () => {
             />
           ))}
         </div>
-
-
       </div>
 
       {/* Shadow effect */}
