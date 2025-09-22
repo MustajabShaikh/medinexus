@@ -63,7 +63,7 @@ export const Carousel = () => {
       setCurrentIndex((prevIndex) => 
         prevIndex === medicalSoftwareData.length - 1 ? 0 : prevIndex + 1
       );
-    }, 4000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [isAutoPlaying]);
